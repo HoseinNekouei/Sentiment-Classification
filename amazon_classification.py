@@ -71,10 +71,14 @@ outputs = layers.Dense(1, activation='sigmoid')(x)
 # Create Model
 model = Model(inputs, outputs)
 
+# Define optimizer with custom learning rate
+opt =  keras.optimizers.Adam(learning_rate= 0.1)
+
 # Compile the model
-model.compile(optimizer= 'adam',
+model.compile(optimizer= opt,
               loss = 'binary_crossentropy',
-              metrics= 'accuracy')
+              metrics= 'accuracy',
+              )
 
 model.summary()
 

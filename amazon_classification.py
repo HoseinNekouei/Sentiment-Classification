@@ -33,26 +33,23 @@ def load_text_dataset(path_info: str) -> tuple[np.array, np.array]:
     '''
 
     # Read cvs file in memory
-    data = pd.read_csv(path_info, usecols=[1,2])
+    data = pd.read_csv('amazon_baby.csv', usecols=[1,2], nrows= 10000)
+    print(f'shape of dataset befor decrease majority classes: {data.shape}')
 
     # drop null reviews
     empty_idxs = data[data['review'].isnull()].index
     data.drop(empty_idxs, inplace=True)
 
-    # Shuffle the dataframe rows
-    data = data.sample(frac=1)
+    ## drop some samples of the majority classes randomly
+    # mj_classes = data[data['rating'] > 2]
+    # mj_index = mj_classes.sample( frac = 0.4, replace = False).index
+    # data.drop(mj_index, inplace= True)
+    
+    # drop 40 percent of samples that represent the majority classes randomly.
+    mj_idx = data.sample(frac = 0.4 , weights= data['rating']).index
+    data.drop(mj_idx)
 
-    # Split labels and features. Change labels > 2 to 0, others to 1
-    features = data['review'].astype(str)
-    labels = data['rating'].apply(lambda x: 0 if x > 0 and x <=2 else 1)
-
-    # Print the shuffled dataframe for the top 100 records 
-    print(labels[:100].tolist())# Read cvs file in memory
-    data = pd.read_csv('amazon_baby.csv', usecols=[1,2])
-
-    # drop null reviews
-    empty_idxs = data[data['review'].isnull()].index
-    data.drop(empty_idxs, inplace=True)
+    print(f'shape of dataset after decrease majorite classes: {data.shape}')
 
     # Shuffle the dataframe rows
     data = data.sample(frac=1)
@@ -108,7 +105,7 @@ def preprocess_text_data(features, labels):
     #compute class weights when taking into account the distribution of labels
     class_weights = compute_class_weight('balanced', classes= np.unique(labels), y= labels )
     class_weights= {i: class_weights[i] for i in range(2)}
-    print(f'Labels weight: {class_weights}')
+    print(f'weight classes: {class_weights}')
 
     # Split dataset into training and testing dataset
     x_train, x_test, y_train, y_test = train_test_split(features,
@@ -127,10 +124,7 @@ def preprocess_text_data(features, labels):
                                                     output_sequence_length= MAX_LEN)
 
     # Adapt the TextVectorization layer to text data
-    vectorizer.adapt(x_train)
-
-    x_train = x_train.map(lambda x: vectorizer(x))
-    x_test = x_train.map(lambda x: vectorizer(x))
+    vectorizer.adapt(x_train, batch_size= BATCH_SIZE)
 
     print(vectorizer.get_vocabulary()[:10])    
 
@@ -161,7 +155,9 @@ def algorithm(vectorizer, class_weights, x_train, x_test, y_train, y_test):
 
     # create LSTM model
     x = layers.LSTM(units= 64, recurrent_dropout=0.5, return_sequences=True)(embeded)
+    x = layers.BatchNormalization()(x)
     x = layers.LSTM(units= 32, recurrent_dropout=0.5, return_sequences=True)(x)
+    x = layers.BatchNormalization()(x)
     x = layers.LSTM(units= 32, recurrent_dropout=0.5)(x)
     x = layers.Dropout(0.5)(x)
 
@@ -172,7 +168,7 @@ def algorithm(vectorizer, class_weights, x_train, x_test, y_train, y_test):
     model = Model(inputs, outputs)
 
     # Define optimizer with custom learning rate
-    opt =  keras.optimizers.Adam(learning_rate= 0.01)
+    opt =  keras.optimizers.Adam(learning_rate= 0.001)
 
     # Compile the model
     model.compile(optimizer= opt,
@@ -240,9 +236,9 @@ def show_results(history):
 
 
 def main():
-    print('The main function is runnig')
+    print('The main function is runnig ...')
 
-    feature, labels = load_text_dataset(r'~/amazon_baby.csv')
+    feature, labels = load_text_dataset(r'amazon_baby.csv')
     vectorizer, class_weights, x_train, x_test, y_train, y_test  = preprocess_text_data(feature, labels)
     history = algorithm(vectorizer, class_weights, x_train, x_test, y_train, y_test)
     show_results(history)

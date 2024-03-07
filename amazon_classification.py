@@ -7,6 +7,7 @@ import tensorflow as tf
 from sklearn.model_selection import train_test_split
 from tensorflow import keras
 from keras import Model, layers
+from keras.layers import requlizers
 import matplotlib.pyplot as plt
 from sklearn.utils.class_weight import compute_class_weight
 
@@ -33,30 +34,27 @@ def load_text_dataset(path_info: str) -> tuple[np.array, np.array]:
     '''
 
     # Read cvs file in memory
-    data = pd.read_csv('amazon_baby.csv', usecols=[1,2], nrows= 10000)
+    data = pd.read_csv(path_info, usecols=[1,2], nrows=20000)
     print(f'shape of dataset befor decrease majority classes: {data.shape}')
 
     # drop null reviews
     empty_idxs = data[data['review'].isnull()].index
     data.drop(empty_idxs, inplace=True)
 
-    ## drop some samples of the majority classes randomly
-    # mj_classes = data[data['rating'] > 2]
-    # mj_index = mj_classes.sample( frac = 0.4, replace = False).index
-    # data.drop(mj_index, inplace= True)
     
     # drop 40 percent of samples that represent the majority classes randomly.
-    mj_idx = data.sample(frac = 0.4 , weights= data['rating']).index
-    data.drop(mj_idx)
+    mj_idx = data.sample(frac = 0.6 , weights= data['rating']).index
+    # sample drop are runnig
+    dropped_data = data.drop(mj_idx)
 
-    print(f'shape of dataset after decrease majorite classes: {data.shape}')
+    print(f'shape of dataset after decrease majority classes: {dropped_data.shape}')
 
     # Shuffle the dataframe rows
-    data = data.sample(frac=1)
+    dropped_data = dropped_data.sample(frac=1)
 
     # Split labels and features. Change labels > 2 to 0, others to 1
-    features = data['review'].astype(str)
-    labels = data['rating'].apply(lambda x: 0 if x > 0 and x <=2 else 1)
+    features = dropped_data['review'].astype(str)
+    labels = dropped_data['rating'].apply(lambda x: 0 if x <=2 else 1)
 
     # Print the shuffled dataframe for the top 100 records 
     print(labels[:100].tolist())
@@ -110,7 +108,7 @@ def preprocess_text_data(features, labels):
     # Split dataset into training and testing dataset
     x_train, x_test, y_train, y_test = train_test_split(features,
                                                         labels, 
-                                                        test_size=0.1, 
+                                                        test_size=0.25, 
                                                         random_state= 42)
     print(f'x_train.shape: {x_train.shape}')
     print(f'x_test.shape: {x_test.shape}')
@@ -154,11 +152,15 @@ def algorithm(vectorizer, class_weights, x_train, x_test, y_train, y_test):
     embeded= layers.Embedding(input_dim= MAX_TOKEN, output_dim= 256)(vectorize)
 
     # create LSTM model
-    x = layers.LSTM(units= 64, recurrent_dropout=0.5, return_sequences=True)(embeded)
+    x = layers.LSTM(units= 256, recurrent_dropout=0.5, kernel_regularizer=requlizers.l2(0.1), return_sequences=True)(embeded)
     x = layers.BatchNormalization()(x)
-    x = layers.LSTM(units= 32, recurrent_dropout=0.5, return_sequences=True)(x)
+    x = layers.LSTM(units= 128, recurrent_dropout=0.5, kernel_regularizer=requlizers.l2(0.1), return_sequences=True)(embeded)
     x = layers.BatchNormalization()(x)
-    x = layers.LSTM(units= 32, recurrent_dropout=0.5)(x)
+    x = layers.LSTM(units= 64, recurrent_dropout=0.5, kernel_regularizer=requlizers.l2(0.1), return_sequences=True)(embeded)
+    x = layers.BatchNormalization()(x)
+    x = layers.LSTM(units= 32, recurrent_dropout=0.5, kernel_regularizer=requlizers.l2(0.1), return_sequences=True)(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.LSTM(units= 32, recurrent_dropout=0.5, kernel_regularizer=requlizers.l2(0.1))(x)
     x = layers.Dropout(0.5)(x)
 
     # Output layer
@@ -168,11 +170,11 @@ def algorithm(vectorizer, class_weights, x_train, x_test, y_train, y_test):
     model = Model(inputs, outputs)
 
     # Define optimizer with custom learning rate
-    opt =  keras.optimizers.Adam(learning_rate= 0.001)
+    opt =  keras.optimizers.Adam(learning_rate= 0.1)
 
     # Compile the model
     model.compile(optimizer= opt,
-                loss = 'binary_crossentropy',
+                loss = 'mse',
                 metrics= 'accuracy')
 
     model.summary()

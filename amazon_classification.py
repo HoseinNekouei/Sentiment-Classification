@@ -6,15 +6,17 @@ import numpy as np
 import tensorflow as tf
 from sklearn.model_selection import train_test_split
 from tensorflow import keras
+from sklearn.metrics import f1_score
 from keras import Model, layers, regularizers
 import matplotlib.pyplot as plt
 from sklearn.utils.class_weight import compute_class_weight
 
 
 MAX_TOKEN =  20000
-MAX_LEN = 600
+MAX_LEN = 512
 EPOCHS = 30
-BATCH_SIZE = 32
+BATCH_SIZE = 64
+n_rows = 30000
 
 def load_text_dataset(path_info: str) -> tuple[np.array, np.array]:
     '''
@@ -33,7 +35,7 @@ def load_text_dataset(path_info: str) -> tuple[np.array, np.array]:
     '''
 
     # Read cvs file in memory
-    data = pd.read_csv(path_info, usecols=[1,2], nrows=20000)
+    data = pd.read_csv(path_info, usecols=[1,2], nrows=n_rows)
     print(f'shape of dataset befor decrease majority classes: {data.shape}')
 
     # drop null reviews
@@ -107,7 +109,7 @@ def preprocess_text_data(features, labels):
     # Split dataset into training and testing dataset
     x_train, x_test, y_train, y_test = train_test_split(features,
                                                         labels, 
-                                                        test_size=0.25, 
+                                                        test_size=0.15, 
                                                         random_state= 42)
     print(f'x_train.shape: {x_train.shape}')
     print(f'x_test.shape: {x_test.shape}')
@@ -148,9 +150,13 @@ def algorithm(vectorizer, class_weights, x_train, x_test, y_train, y_test):
     vectorize = vectorizer(inputs)
 
     # Embedding layer
-    embeded= layers.Embedding(input_dim= MAX_TOKEN, output_dim= 256)(vectorize)
-
-    # create LSTM model
+    embeded= layers.Embedding(input_dim= MAX_TOKEN, output_dim= 512)(vectorize)
+    
+    # CNN layer
+    cnn_output = layers.Conv1D(filters=64 , kernel_size=3 , activation='relu')(embeded)
+    cnn_output = layers.GlobalMaxPooling1D()(cnn_output)
+    
+    # LSTM Layer
     x = layers.LSTM(units= 64, kernel_regularizer= regularizers.L2(0.01), return_sequences=True)(embeded)
     x = layers.BatchNormalization()(x)
     x = layers.Dropout(0.5)(x)
@@ -158,18 +164,21 @@ def algorithm(vectorizer, class_weights, x_train, x_test, y_train, y_test):
     x = layers.BatchNormalization()(x)
     x = layers.Dropout(0.5)(x)
 
+    # Concatenate CNN output and LSTM output
+    combined = layers.concatenate([cnn_output, x])
+
     # Output layer
-    outputs = layers.Dense(1, activation='sigmoid')(x)
+    outputs = layers.Dense(1, activation='sigmoid')(combined)
 
     # Create Model
     model = Model(inputs, outputs)
 
     # Define optimizer with custom learning rate
-    opt =  keras.optimizers.Adam(learning_rate= 0.01)
+    opt =  keras.optimizers.Adam(learning_rate= 0.001)
 
     # Compile the model
     model.compile(optimizer= opt,
-                loss = 'mse',
+                loss = 'binary_crossentropy',
                 metrics= 'accuracy')
 
     model.summary()
@@ -179,10 +188,13 @@ def algorithm(vectorizer, class_weights, x_train, x_test, y_train, y_test):
                         validation_data= (x_test, y_test), 
                         epochs = EPOCHS, 
                         batch_size= BATCH_SIZE,
-                        class_weight= class_weights)
+                        class_weight= class_weights,
+                        shuffle= True)
 
-    loss, accuracy = model.evaluate(x_test, y_test) 
+    loss, accuracy = model.evaluate(x_test, y_test)
     print(f'Test loss: {loss :.2f}, Test accuracy: {accuracy :.2f}')
+
+    f1_score = f1_score(y_train, y_test, )
 
     # save model
     model.save("amazon_model", save_format='tf')
@@ -214,19 +226,33 @@ def show_results(history):
     accuracy = history.history['accuracy']
     val_accuracy = history.history['val_accuracy']
 
+    # Initialise the subplot function using number of rows and columns 
+    plt.figure()
+    
     # Plot the training and validation loss
+    plt.subplot(2,2,1)   
     plt.plot(np.arange(EPOCHS), loss, label='Loss')
+    plt.xlabel('Epotch')
+    plt.ylabel('Train_Loss')
+
+    plt.subplot(2,2,2)   
     plt.plot(np.arange(EPOCHS), val_loss, label= 'Val_loss')
+    plt.xlabel('Epotch')
+    plt.ylabel('Test_Loss')
 
     # Plot the training and validation accuracy
+    plt.subplot(2,2,3)   
     plt.plot(np.arange(EPOCHS), accuracy, label='accuracy')
+    plt.xlabel('Epotch')
+    plt.ylabel('Train_Accuracy')
+
+    plt.subplot(2,2,4)   
     plt.plot(np.arange(EPOCHS), val_accuracy, label= 'Val_accuracy')
+    plt.xlabel('Epotch')
+    plt.ylabel('Test_Accuracy')
 
     # Add legend, labels, and title to the plot
     plt.legend()
-    plt.xlabel('Epotch')
-    plt.ylabel('Loss/Accuracy')
-    plt.title('Amazon sentiment analysis')
 
     # Display the plot
     plt.show()

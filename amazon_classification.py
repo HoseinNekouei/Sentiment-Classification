@@ -3,12 +3,13 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 import pandas as pd
 import numpy as np
-import tensorflow as tf
-from sklearn.model_selection import train_test_split
-from tensorflow import keras
-from sklearn.metrics import f1_score
-from keras import Model, layers, regularizers
 import matplotlib.pyplot as plt
+
+import tensorflow as tf
+from tensorflow import keras
+from keras import Model, layers, regularizers
+from keras.callbacks import EarlyStopping
+from sklearn.model_selection import train_test_split
 from sklearn.utils.class_weight import compute_class_weight
 
 
@@ -153,6 +154,7 @@ def algorithm(vectorizer, class_weights, x_train, x_test, y_train, y_test):
     embeded= layers.Embedding(input_dim= MAX_TOKEN, output_dim= 512)(vectorize)
     
     # CNN layer
+    # extract local features from the text before passing them to LSTM for sequential analysis.
     cnn_output = layers.Conv1D(filters=64 , kernel_size=3 , activation='relu')(embeded)
     cnn_output = layers.GlobalMaxPooling1D()(cnn_output)
     
@@ -181,6 +183,8 @@ def algorithm(vectorizer, class_weights, x_train, x_test, y_train, y_test):
                 loss = 'binary_crossentropy',
                 metrics= 'accuracy')
 
+    early_stopping = EarlyStopping(monitor='val_loss', patience = 3, mode='min')
+
     model.summary()
 
     history = model.fit(x_train, 
@@ -189,12 +193,11 @@ def algorithm(vectorizer, class_weights, x_train, x_test, y_train, y_test):
                         epochs = EPOCHS, 
                         batch_size= BATCH_SIZE,
                         class_weight= class_weights,
-                        shuffle= True)
+                        shuffle= True,
+                        callbacks= [early_stopping])
 
     loss, accuracy = model.evaluate(x_test, y_test)
     print(f'Test loss: {loss :.2f}, Test accuracy: {accuracy :.2f}')
-
-    f1_score = f1_score(y_train, y_test, )
 
     # save model
     model.save("amazon_model", save_format='tf')

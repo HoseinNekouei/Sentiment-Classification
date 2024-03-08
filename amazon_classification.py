@@ -15,9 +15,9 @@ from sklearn.utils.class_weight import compute_class_weight
 
 MAX_TOKEN =  20000
 MAX_LEN = 512
-EPOCHS = 30
-BATCH_SIZE = 64
-n_rows = 30000
+EPOCHS = 10
+BATCH_SIZE = 32
+n_rows = 40000
 
 def load_text_dataset(path_info: str) -> tuple[np.array, np.array]:
     '''
@@ -151,20 +151,23 @@ def algorithm(vectorizer, class_weights, x_train, x_test, y_train, y_test):
     vectorize = vectorizer(inputs)
 
     # Embedding layer
-    embeded= layers.Embedding(input_dim= MAX_TOKEN, output_dim= 512)(vectorize)
+    embeded= layers.Embedding(input_dim= MAX_TOKEN, output_dim= 256)(vectorize)
     
     # CNN layer
     # extract local features from the text before passing them to LSTM for sequential analysis.
-    cnn_output = layers.Conv1D(filters=64 , kernel_size=3 , activation='relu')(embeded)
+    cnn_output = layers.Conv1D(filters=64 , kernel_size= 3 , activation='relu')(embeded)
+    cnn_output = layers.BatchNormalization()(cnn_output)
+    cnn_output = layers.Conv1D(filters=64 , kernel_size= 3 , activation='relu')(cnn_output)
     cnn_output = layers.GlobalMaxPooling1D()(cnn_output)
+    cnn_output = layers.Dropout(0.5)(cnn_output)
     
     # LSTM Layer
-    x = layers.LSTM(units= 64, kernel_regularizer= regularizers.L2(0.01), return_sequences=True)(embeded)
+    x = layers.LSTM(units= 64, kernel_regularizer= regularizers.L2(0.01))(embeded)
     x = layers.BatchNormalization()(x)
     x = layers.Dropout(0.5)(x)
-    x = layers.LSTM(units= 32, kernel_regularizer= regularizers.L2(0.01))(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.Dropout(0.5)(x)
+    # x = layers.LSTM(units= 32, kernel_regularizer= regularizers.L2(0.01))(x)
+    # x = layers.BatchNormalization()(x)
+    # x = layers.Dropout(0.5)(x)
 
     # Concatenate CNN output and LSTM output
     combined = layers.concatenate([cnn_output, x])
@@ -176,25 +179,26 @@ def algorithm(vectorizer, class_weights, x_train, x_test, y_train, y_test):
     model = Model(inputs, outputs)
 
     # Define optimizer with custom learning rate
-    opt =  keras.optimizers.Adam(learning_rate= 0.001)
+    opt =  keras.optimizers.Adam(learning_rate= 0.01)
 
     # Compile the model
     model.compile(optimizer= opt,
                 loss = 'binary_crossentropy',
                 metrics= 'accuracy')
 
-    early_stopping = EarlyStopping(monitor='val_loss', patience = 3, mode='min')
+    # Define the EarlyStopping callback 
+    # early_stopping = EarlyStopping(monitor='val_loss', patience = 5, mode='min')
 
     model.summary()
 
+    # fit method
     history = model.fit(x_train, 
                         y_train, 
                         validation_data= (x_test, y_test), 
                         epochs = EPOCHS, 
                         batch_size= BATCH_SIZE,
                         class_weight= class_weights,
-                        shuffle= True,
-                        callbacks= [early_stopping])
+                        shuffle= True)
 
     loss, accuracy = model.evaluate(x_test, y_test)
     print(f'Test loss: {loss :.2f}, Test accuracy: {accuracy :.2f}')
@@ -228,31 +232,24 @@ def show_results(history):
     val_loss = history.history['val_loss']
     accuracy = history.history['accuracy']
     val_accuracy = history.history['val_accuracy']
+    epochs = history.epoch
 
     # Initialise the subplot function using number of rows and columns 
     plt.figure()
     
     # Plot the training and validation loss
-    plt.subplot(2,2,1)   
-    plt.plot(np.arange(EPOCHS), loss, label='Loss')
+    plt.subplot(1,2,1)   
+    plt.plot(epochs, loss, label='Loss')
+    plt.plot(epochs, val_loss, label= 'Val_loss')
     plt.xlabel('Epotch')
-    plt.ylabel('Train_Loss')
-
-    plt.subplot(2,2,2)   
-    plt.plot(np.arange(EPOCHS), val_loss, label= 'Val_loss')
-    plt.xlabel('Epotch')
-    plt.ylabel('Test_Loss')
+    plt.ylabel('Loss / Val_Loss')
 
     # Plot the training and validation accuracy
-    plt.subplot(2,2,3)   
-    plt.plot(np.arange(EPOCHS), accuracy, label='accuracy')
+    plt.subplot(1,2,2)   
+    plt.plot(epochs, accuracy, label='accuracy')
+    plt.plot(epochs, val_accuracy, label= 'Val_accuracy')
+    plt.ylabel('Accuracy / Val_Accuracy')
     plt.xlabel('Epotch')
-    plt.ylabel('Train_Accuracy')
-
-    plt.subplot(2,2,4)   
-    plt.plot(np.arange(EPOCHS), val_accuracy, label= 'Val_accuracy')
-    plt.xlabel('Epotch')
-    plt.ylabel('Test_Accuracy')
 
     # Add legend, labels, and title to the plot
     plt.legend()

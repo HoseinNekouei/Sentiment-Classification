@@ -6,16 +6,15 @@ import numpy as np
 import tensorflow as tf
 from sklearn.model_selection import train_test_split
 from tensorflow import keras
-from keras import Model, layers
-from keras.layers import requlizers
+from keras import Model, layers, regularizers
 import matplotlib.pyplot as plt
 from sklearn.utils.class_weight import compute_class_weight
 
 
-MAX_TOKEN =  10000
-MAX_LEN = 512
-EPOCHS = 10
-BATCH_SIZE = 64
+MAX_TOKEN =  20000
+MAX_LEN = 600
+EPOCHS = 30
+BATCH_SIZE = 32
 
 def load_text_dataset(path_info: str) -> tuple[np.array, np.array]:
     '''
@@ -152,15 +151,11 @@ def algorithm(vectorizer, class_weights, x_train, x_test, y_train, y_test):
     embeded= layers.Embedding(input_dim= MAX_TOKEN, output_dim= 256)(vectorize)
 
     # create LSTM model
-    x = layers.LSTM(units= 256, recurrent_dropout=0.5, kernel_regularizer=requlizers.l2(0.1), return_sequences=True)(embeded)
+    x = layers.LSTM(units= 64, kernel_regularizer= regularizers.L2(0.01), return_sequences=True)(embeded)
     x = layers.BatchNormalization()(x)
-    x = layers.LSTM(units= 128, recurrent_dropout=0.5, kernel_regularizer=requlizers.l2(0.1), return_sequences=True)(embeded)
+    x = layers.Dropout(0.5)(x)
+    x = layers.LSTM(units= 32, kernel_regularizer= regularizers.L2(0.01))(x)
     x = layers.BatchNormalization()(x)
-    x = layers.LSTM(units= 64, recurrent_dropout=0.5, kernel_regularizer=requlizers.l2(0.1), return_sequences=True)(embeded)
-    x = layers.BatchNormalization()(x)
-    x = layers.LSTM(units= 32, recurrent_dropout=0.5, kernel_regularizer=requlizers.l2(0.1), return_sequences=True)(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.LSTM(units= 32, recurrent_dropout=0.5, kernel_regularizer=requlizers.l2(0.1))(x)
     x = layers.Dropout(0.5)(x)
 
     # Output layer
@@ -170,7 +165,7 @@ def algorithm(vectorizer, class_weights, x_train, x_test, y_train, y_test):
     model = Model(inputs, outputs)
 
     # Define optimizer with custom learning rate
-    opt =  keras.optimizers.Adam(learning_rate= 0.1)
+    opt =  keras.optimizers.Adam(learning_rate= 0.01)
 
     # Compile the model
     model.compile(optimizer= opt,

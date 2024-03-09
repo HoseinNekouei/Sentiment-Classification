@@ -13,11 +13,11 @@ from sklearn.model_selection import train_test_split
 from sklearn.utils.class_weight import compute_class_weight
 
 
-MAX_TOKEN =  20000
-MAX_LEN = 512
-EPOCHS = 10
+MAX_TOKEN =  2000
+MAX_LEN = 128
+EPOCHS = 15
 BATCH_SIZE = 32
-n_rows = 40000
+n_rows = 180000
 
 def load_text_dataset(path_info: str) -> tuple[np.array, np.array]:
     '''
@@ -110,8 +110,7 @@ def preprocess_text_data(features, labels):
     # Split dataset into training and testing dataset
     x_train, x_test, y_train, y_test = train_test_split(features,
                                                         labels, 
-                                                        test_size=0.15, 
-                                                        random_state= 42)
+                                                        test_size=0.2)
     print(f'x_train.shape: {x_train.shape}')
     print(f'x_test.shape: {x_test.shape}')
     print(f'y_tain.shape: {y_train.shape}')
@@ -133,7 +132,7 @@ def preprocess_text_data(features, labels):
 
 def algorithm(vectorizer, class_weights, x_train, x_test, y_train, y_test):
     '''
-        Create an LSTM_based binary classification model.
+        Create an GRU_based binary classification model.
 
         Args:
             max_token (int):
@@ -151,26 +150,20 @@ def algorithm(vectorizer, class_weights, x_train, x_test, y_train, y_test):
     vectorize = vectorizer(inputs)
 
     # Embedding layer
-    embeded= layers.Embedding(input_dim= MAX_TOKEN, output_dim= 256)(vectorize)
+    embeded= layers.Embedding(input_dim= MAX_TOKEN, output_dim= 64)(vectorize)
     
     # CNN layer
     # extract local features from the text before passing them to LSTM for sequential analysis.
     cnn_output = layers.Conv1D(filters=64 , kernel_size= 3 , activation='relu')(embeded)
     cnn_output = layers.BatchNormalization()(cnn_output)
-    cnn_output = layers.Conv1D(filters=64 , kernel_size= 3 , activation='relu')(cnn_output)
     cnn_output = layers.GlobalMaxPooling1D()(cnn_output)
-    cnn_output = layers.Dropout(0.5)(cnn_output)
     
-    # LSTM Layer
-    x = layers.LSTM(units= 64, kernel_regularizer= regularizers.L2(0.01))(embeded)
-    x = layers.BatchNormalization()(x)
-    x = layers.Dropout(0.5)(x)
-    # x = layers.LSTM(units= 32, kernel_regularizer= regularizers.L2(0.01))(x)
-    # x = layers.BatchNormalization()(x)
-    # x = layers.Dropout(0.5)(x)
+    # GRU Layer
+    gru_output = layers.GRU(units= 128, kernel_regularizer= regularizers.L2(0.1), recurrent_dropout=0.5, return_sequences= True)(embeded)
+    gru_output = layers.GRU(units= 64, kernel_regularizer= regularizers.L2(0.1), recurrent_dropout=0.5)(gru_output)
 
-    # Concatenate CNN output and LSTM output
-    combined = layers.concatenate([cnn_output, x])
+    # Concatenate CNN output and GRU output
+    combined = layers.concatenate([cnn_output, gru_output])
 
     # Output layer
     outputs = layers.Dense(1, activation='sigmoid')(combined)
@@ -179,7 +172,7 @@ def algorithm(vectorizer, class_weights, x_train, x_test, y_train, y_test):
     model = Model(inputs, outputs)
 
     # Define optimizer with custom learning rate
-    opt =  keras.optimizers.Adam(learning_rate= 0.01)
+    opt =  keras.optimizers.Adam(learning_rate= 0.001)
 
     # Compile the model
     model.compile(optimizer= opt,
@@ -187,7 +180,7 @@ def algorithm(vectorizer, class_weights, x_train, x_test, y_train, y_test):
                 metrics= 'accuracy')
 
     # Define the EarlyStopping callback 
-    # early_stopping = EarlyStopping(monitor='val_loss', patience = 5, mode='min')
+    early_stopping = EarlyStopping(monitor='val_accuracy', patience = 5, mode='max')
 
     model.summary()
 
@@ -198,7 +191,8 @@ def algorithm(vectorizer, class_weights, x_train, x_test, y_train, y_test):
                         epochs = EPOCHS, 
                         batch_size= BATCH_SIZE,
                         class_weight= class_weights,
-                        shuffle= True)
+                        shuffle= True,
+                        callbacks= early_stopping)
 
     loss, accuracy = model.evaluate(x_test, y_test)
     print(f'Test loss: {loss :.2f}, Test accuracy: {accuracy :.2f}')
@@ -243,6 +237,9 @@ def show_results(history):
     plt.plot(epochs, val_loss, label= 'Val_loss')
     plt.xlabel('Epotch')
     plt.ylabel('Loss / Val_Loss')
+    
+    # Add legend, labels, and title to the plot
+    plt.legend()
 
     # Plot the training and validation accuracy
     plt.subplot(1,2,2)   

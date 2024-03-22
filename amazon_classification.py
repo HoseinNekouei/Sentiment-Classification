@@ -15,7 +15,7 @@ from sklearn.utils.class_weight import compute_class_weight
 
 MAX_TOKEN =  2000
 MAX_LEN = 128
-EPOCHS = 15
+EPOCHS = 20
 BATCH_SIZE = 32
 n_rows = 180000
 
@@ -110,7 +110,8 @@ def preprocess_text_data(features, labels):
     # Split dataset into training and testing dataset
     x_train, x_test, y_train, y_test = train_test_split(features,
                                                         labels, 
-                                                        test_size=0.2)
+                                                        test_size=0.2,
+                                                        random_state= 42)
     print(f'x_train.shape: {x_train.shape}')
     print(f'x_test.shape: {x_test.shape}')
     print(f'y_tain.shape: {y_train.shape}')
@@ -159,14 +160,14 @@ def algorithm(vectorizer, class_weights, x_train, x_test, y_train, y_test):
     cnn_output = layers.GlobalMaxPooling1D()(cnn_output)
     
     # GRU Layer
-    gru_output = layers.GRU(units= 128, kernel_regularizer= regularizers.L2(0.1), recurrent_dropout=0.5, return_sequences= True)(embeded)
-    gru_output = layers.GRU(units= 64, kernel_regularizer= regularizers.L2(0.1), recurrent_dropout=0.5)(gru_output)
+    gru_output = layers.Bidirectional(layers.GRU(units= 64, kernel_regularizer= regularizers.L2(0.1), recurrent_dropout=0.5, return_sequences= True))(embeded)
+    gru_output = layers.Bidirectional(layers.GRU(units= 32, kernel_regularizer= regularizers.L2(0.1), recurrent_dropout=0.5))(gru_output)
 
     # Concatenate CNN output and GRU output
     combined = layers.concatenate([cnn_output, gru_output])
-
+    drop_out = layers.Dropout(0.5)(combined)
     # Output layer
-    outputs = layers.Dense(1, activation='sigmoid')(combined)
+    outputs = layers.Dense(1, activation='sigmoid')(drop_out)
 
     # Create Model
     model = Model(inputs, outputs)
@@ -180,7 +181,7 @@ def algorithm(vectorizer, class_weights, x_train, x_test, y_train, y_test):
                 metrics= 'accuracy')
 
     # Define the EarlyStopping callback 
-    early_stopping = EarlyStopping(monitor='val_accuracy', patience = 5, mode='max')
+    # early_stopping = EarlyStopping(monitor='val_accuracy', patience = 5, mode='max')
 
     model.summary()
 
@@ -191,8 +192,8 @@ def algorithm(vectorizer, class_weights, x_train, x_test, y_train, y_test):
                         epochs = EPOCHS, 
                         batch_size= BATCH_SIZE,
                         class_weight= class_weights,
-                        shuffle= True,
-                        callbacks= early_stopping)
+                        shuffle= True)
+                        # callbacks= early_stopping)
 
     loss, accuracy = model.evaluate(x_test, y_test)
     print(f'Test loss: {loss :.2f}, Test accuracy: {accuracy :.2f}')
